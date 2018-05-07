@@ -1,6 +1,5 @@
 module Main where
 
-
 import System.IO
 import System.Environment
 import Text.Read
@@ -15,8 +14,18 @@ import qualified Data.HashMap.Strict as M
 import System.Random
 
 
+-- | TYPES
+type ChunksOf a          = [a]
 
-type ChunksOf a = [a]
+type Solution            = [([Integer], [Integer])]
+type Instance            = [(Integer, [Integer])]
+type FilteredInstance    = [[Integer]]
+type BruteInstance       = [[Integer]]
+type SolutionValue       = Integer
+type Dictionary          = M.HashMap Integer Integer
+type ObjectLabels        = [Integer]
+type FeatureLabels       = [Integer]
+type FilteredInstanceRow = [Integer]
 
 
 -- | RANDOM GENERATOR FUNCTIONS
@@ -75,24 +84,24 @@ len x = len' 0 x
 parLen :: ChunksOf [a] -> Integer
 parLen chunks = mapReduce (\x -> 1) (+) chunks
 
-
 -- |'flapMap'
-flatMap :: [[Integer]] -> [Integer]
+flatMap :: [[a]] -> [a]
 flatMap matrix = foldl (++) [] matrix
 
 -- |'distinctFlatMap'
 distinctFlatMap :: [[Integer]] -> [Integer]
 distinctFlatMap  = sort . nub . flatMap
 
-
-zipWithIndexBackLen :: [b] -> (Integer, [(b, Integer)])
+-- |'zipWithIndexBackLen'
+-- |Está função aplica o zipWithIndex e retornando também a dimensão do vetor zipado
+zipWithIndexBackLen :: [a] -> (Integer, [(a, Integer)])
 zipWithIndexBackLen x = zipWIBL x [1,2..] []
     where
         zipWIBL (x:[]) (y:_) h = (y, h++[(x, y)])
         zipWIBL (x:xs) (y:ys) h = zipWIBL xs ys (h++[(x, y)])
 
 -- |'zipWithIndex'
-zipWithIndex :: [b] -> [(Integer, b)]
+zipWithIndex :: [a] -> [(Integer, a)]
 zipWithIndex = zip [1,2..]
 
 
@@ -107,7 +116,7 @@ zipWithIndex = zip [1,2..]
 
 -- | Leitura de arquivo
 -- |'parseFile' parses a space separated file to a list of lists of Integer
-parseFile :: String -> [[Integer]]
+parseFile :: String -> BruteInstance
 parseFile file = map parseLine (lines file)
     where
         parseLine l = map toInteger (words l)
@@ -118,27 +127,32 @@ parseFile file = map parseLine (lines file)
                             Nothing -> -1
 
 -- |'getMaxFeature'
-getMaxFeatValue :: [[Integer]] -> Integer
+getMaxFeatValue :: BruteInstance -> Integer
 getMaxFeatValue = foldl (max) 0 . map (\x -> foldl (max) 0 x )
 
--- 
-vecFeatures :: ChunksOf [[Integer]] -> (Integer, [(Integer,Integer)])
-vecFeatures chunks = zipWithIndexBackLen $ mapReduce (\x -> x) (\x y -> sort $ nub (x ++ y)) chunks
+-- |'vecFeatures'
+-- |Está função retorna o zipWithIndex da consolidação das features e a quantidade de features
+parVecFeatures :: ChunksOf BruteInstance -> (Integer, [(Integer, Integer)])
+parVecFeatures chunks = zipWithIndexBackLen $ mapReduce (\x -> x) (\x y -> sort $ nub (x ++ y)) chunks
 
-
-infoFeatPerObj :: ChunksOf [[Integer]] -> (Integer, Integer, Integer, Integer)
-infoFeatPerObj chunks = mapReduce specialLen infoFold chunks
+-- |'indoFeatPerObj
+-- |Esta função retorna informações com relação aos de objetos e as features Exemplo: número de objetos, quantidade máxima e mínima de features por objeto e a soma de features dos objetos
+parInfoFeatPerObj :: ChunksOf BruteInstance -> (Integer, Integer, Integer, Integer)
+parInfoFeatPerObj chunks = mapReduce specialLen infoFold chunks
     where
         infoFold (x1, x2, x3, x4) (y1, y2, y3, y4) = (x1 + y1, x2+y2, min x3 y3, max x4 y4)
         specialLen x = (1, lenthX, lenthX, lenthX)
             where
                 lenthX = len x
 
-tratarDados :: [(Integer, [Integer])] -> M.HashMap Integer Integer -> [(Integer, [Integer])]
-tratarDados dM mapaHash = map (\(i, di) -> (i, sort $ map (\dij -> mapaHash M.! dij) di) ) dM
+-- |'tratarDados'
+-- |Esta função troca os labels das features para números no intervado {1, 2.. m} onde m é a quantidade de diferentes features
+tratarDados :: Instance -> Dictionary -> Instance
+tratarDados dM dict = map (\(i, di) -> (i, sort $ map (\dij -> dict M.! dij) di) ) dM
 
-parTratarDados :: ChunksOf [(Integer, [Integer])] -> M.HashMap Integer Integer -> ChunksOf [(Integer, [Integer])]
-parTratarDados chunks mapaHash = parmap (\x -> tratarDados x mapaHash ) chunks
+-- |'parTratarDados'
+parTratarDados :: ChunksOf Instance -> Dictionary -> ChunksOf Instance
+parTratarDados chunks dict = parmap (\x -> tratarDados x dict ) chunks
 
 
 -- |##########################################################################################
@@ -150,11 +164,10 @@ parTratarDados chunks mapaHash = parmap (\x -> tratarDados x mapaHash ) chunks
 -- |'SIMPLEEVALUATION' 
 -- ##################################################################################
 
-parIntersect :: [Integer] -> ChunksOf [(Integer, [Integer])] -> ChunksOf [[Integer]]
-parIntersect x dCks = parmap (\d -> filterxD x d) dCks 
 
 -- |'filterxD'
-filterxD :: [Integer] -> [(Integer, [Integer])] -> [[Integer]]
+-- |Filtra as linhas da matrix D com relação aos índices i da solução x cujos valores x_i = 1
+filterxD :: ObjectLabels -> Instance -> FilteredInstance
 filterxD x d = filterxD' x d []
     where
         filterxD' []  _ h   = h
@@ -163,8 +176,12 @@ filterxD x d = filterxD' x d []
             | x == a        = filterxD'    xs  ds (h ++ [b])
             | otherwise     = filterxD' (x:xs) ds  h
 
+parFilterxD :: ObjectLabels -> ChunksOf Instance -> ChunksOf FilteredInstance
+parFilterxD x dCks = parmap (\d -> filterxD x d) dCks 
+
+
 -- |'filteryd'
-filteryd :: [Integer] -> [Integer] -> Integer
+filteryd :: FeatureLabels -> FilteredInstanceRow -> Integer
 filteryd y d = filteryd' y d 0
     where
         filteryd'     []  _     c = c
@@ -175,8 +192,13 @@ filteryd y d = filteryd' y d 0
             | otherwise           = filteryd' (y:ys)   ds   c
 
 -- |'simpleEvalPar' Avaliação básica distribuída
-simpleEvalPar :: [([Integer], [Integer])] -> ChunksOf [(Integer, [Integer])] -> Integer
-simpleEvalPar gM dCks = foldl1' (+) $ map ( \(gxk, gyk) -> mapReduce (\di -> filteryd gyk di) (+) (parIntersect gxk dCks)) gM
+simpleEvalPar :: ChunksOf Solution -> ChunksOf Instance -> SolutionValue
+simpleEvalPar gM dCks = ( mapReduce ( \(gxk, gyk) -> 
+      mapReduce ( \di -> filteryd gyk di ) (+) 
+      $ filter (/=[]) 
+      $ parFilterxD gxk dCks ) (+)
+    $ gM )
+
 
 -- |##################################################################################
 -- |##################################################################################
@@ -188,7 +210,8 @@ simpleEvalPar gM dCks = foldl1' (+) $ map ( \(gxk, gyk) -> mapReduce (\di -> fil
 -- |##################################################################################
 
 -- |'initSolution' Initial solution
-initSolution :: Int -> Integer -> Integer -> Integer -> [([Integer], [Integer])]
+initSolution :: Int -> Integer -> Integer -> Integer -> Solution
+--[([Integer], [Integer])]
 initSolution yLen n m k = listSol [] k
     where
         listSol s 1 = [( [ x | x <- [ 1, 2 .. (pObj+rObj) ]], take yLen [y | y <- [ 1,2 .. (pFea+rFea)]] )] ++ s
@@ -209,28 +232,29 @@ initSolution yLen n m k = listSol [] k
 main :: IO()
 main = do
 
+    -- |Entrada dos dados
     file <- readFile "teste2.data"
     let 
       dataset = parseFile file
       numCks = 1000 :: Int
       dataChunks  = chunksOf numCks dataset
 
+    -- |Pré-processamento
     let
-      (m, featuresDic) = vecFeatures dataChunks
+      (m, featuresDic) = parVecFeatures dataChunks
       dictHash = M.fromList featuresDic
-      (n, sumFeat, minFeat, maxFeat) = infoFeatPerObj dataChunks
-      k = 10
-
-    let
+      (n, sumFeat, minFeat, maxFeat) = parInfoFeatPerObj dataChunks
       aveFeat = fromIntegral (sumFeat `div` n)
+      k = 10
 
     print ( (n, m) )
     print ( (aveFeat, minFeat, maxFeat) )
-    print ( featuresDic )
 
-    -- | Parallel File
     let 
       dMCks =  parTratarDados (chunksOf numCks $ zipWithIndex dataset) dictHash
       gMatrix = initSolution aveFeat n m k
+      gMCks = chunksOf 2 gMatrix
 
-    print( simpleEvalPar gMatrix dMCks  )
+    -- |Cálculo do valor da função objetivo
+    print( simpleEvalPar gMCks dMCks  )
+    --print( simpleEvalPar gMatrix dMCks  )
