@@ -1,3 +1,11 @@
+{-|
+Description     : Avaliação em co-agrupamento
+Copyright       : (c) Eduardo Anacleto, 2018
+Maintainer      : eduardo.statistic@gmail.com
+
+Developed by    : Eduardo Anacleto
+-}
+
 module Main where
 
 import System.IO
