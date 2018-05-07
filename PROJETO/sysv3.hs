@@ -124,11 +124,10 @@ getMaxFeatValue = foldl (max) 0 . map (\x -> foldl (max) 0 x )
 -- |'vecFeatures'
 -- |Está função retorna o zipWithIndex da consolidação das features e a quantidade de features
 vecFeatures :: BruteInstance -> (Integer, [(Integer,Integer)])
-vecFeatures x = (zipWithIndexBackLen 
-                $ sort 
-                $ nub 
-                $ foldl1' (++) 
-                $ x)
+vecFeatures x = (zipWithIndexBackLen
+                $ foldl1' (\x y -> sort $ nub $ x ++ y) x )
+
+--vecFeatures x = (zipWithIndexBackLen $ sort $ nub $ foldl1' (++) $ x)
 
 
 -- |'indoFeatPerObj
@@ -241,3 +240,4 @@ main = do
 
     -- |Cálculo do valor da função objetivo
     print( simpleEvaluation gMatrix dMatrix  )
+    

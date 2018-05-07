@@ -141,7 +141,8 @@ getMaxFeatValue = foldl (max) 0 . map (\x -> foldl (max) 0 x )
 -- |'vecFeatures'
 -- |Está função retorna o zipWithIndex da consolidação das features e a quantidade de features
 parVecFeatures :: ChunksOf BruteInstance -> (Integer, [(Integer, Integer)])
-parVecFeatures chunks = zipWithIndexBackLen $ mapReduce (\x -> x) (\x y -> sort $ nub (x ++ y)) chunks
+parVecFeatures chunks = zipWithIndexBackLen 
+    $ mapReduce id (\x y -> sort $ nub (x ++ y)) chunks
 
 -- |'indoFeatPerObj
 -- |Esta função retorna informações com relação aos de objetos e as features Exemplo: número de objetos, quantidade máxima e mínima de features por objeto e a soma de features dos objetos
