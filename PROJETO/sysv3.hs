@@ -150,6 +150,36 @@ infoFeatPerObj dM = foldl1' infoFold $ map specialLen  dM
 tratarDados :: Instance -> Dictionary -> Instance
 tratarDados dM dict = map (\(i, di) -> (i, sort $ map (\dij -> dict M.! dij) di) ) dM
 
+
+-- |'setTakeOff'
+setTakeOff :: Int -> Solution -> Solution
+setTakeOff xLen gM = map (\(x, y) -> (take xLen x, y)) gM
+
+
+-- |'setTakeIn'
+setTakeIn :: Solution -> Solution
+setTakeIn ((x1,y1):hs) = setTakeIn' [] ((x1,y1):hs)
+    where
+        setTakeIn' h                  []  = error "Error"
+        setTakeIn' h         ((xj,yj):[]) = h ++ [(x1, yj)]
+        setTakeIn' h ((xi,yi):(xj,yj):ps) = setTakeIn' (h ++ [(xj,yi)]) ((xj,yj):ps)
+
+-- |'replaceObjects
+replaceObjects :: (ObjectLabels, FeatureLabels) -> (ObjectLabels, FeatureLabels) -> (ObjectLabels, FeatureLabels)
+replaceObjects (xO, xF) (yO, yF) = (sort $ replaceO' xO yO [], xF)
+    where
+        replaceO'    []     ys  d = d ++ ys
+        replaceO'    xs     []  d = d ++ xs
+        replaceO' (x:xs) (y:ys) d = replaceO' xs ys (d ++ [y])
+
+-- |'resetSolution
+resetSolution :: Solution -> Solution -> Solution
+resetSolution gM gMTakeIn = changeS' gM gMTakeIn []
+    where
+        changeS'    []      _  d = d
+        changeS'     _      [] d = d
+        changeS' (x:xs) (y:ys) d = changeS' xs ys (d ++ [replaceObjects x y])
+
 -- |##########################################################################################
 -- |##########################################################################################
 
@@ -198,6 +228,19 @@ simpleEvaluation gM dM = (
 
 
 
+-- |'FAST EVALUATION'
+-- ###################################################################################
+
+-- |'Fast Evaluation
+fastEvaluation :: SolutionValue -> Solution -> Solution -> Instance -> SolutionValue
+fastEvaluation sol gMTakeOff gMPutIn dM = sol - simpleEvaluation gMTakeOff dM + simpleEvaluation gMPutIn dM
+
+-- |##################################################################################
+-- |##################################################################################
+
+
+
+
 -- | INITIAL SOLUTION
 -- |##################################################################################
 
@@ -223,45 +266,71 @@ initSolution yLen n m k = filter (/= ([],[])) $ listSol [] k
 main :: IO()
 main = do
 
+    -- |READING AND PARSING DATA #################################
     t1 <- getTime Monotonic
-
-    -- |Entrada dos dados
-    file <- readFile "teste2.data"
+    file <- readFile "amazon2000.data"
     let 
       dataset = parseFile file
+    -- |##########################################################
 
+
+    -- |PREPROCESSING ############################################
+    -- |Taking instance info
     t2 <- getTime Monotonic
-
-    -- |Pré-processamento
     let
       (m, featuresDic) = vecFeatures dataset
-      dictHash         = M.fromList featuresDic
+      dictHash   = M.fromList featuresDic
       (n, sumNumFeat, minNumFeat, maxNumFeat) = infoFeatPerObj dataset
-      aveNumFeat       = (fromIntegral sumNumFeat) / (fromIntegral n)
-      k = 10
+      aveNumFeat = (fromIntegral sumNumFeat) / (fromIntegral n)
+      k          = 10
+      numTakeOff = 150
 
     print ( ("numObjects", "numFeatures") )
     print ( (n, m) )
     print ( ("min", "max", "average") )
     print ( (minNumFeat, maxNumFeat, aveNumFeat) )
 
+    -- |Setting Instance and Initial Solution
     let 
       dMatrix = tratarDados (zipWithIndex dataset) dictHash
       gMatrix = initSolution (truncate aveNumFeat) n m k
 
+    -- |Setting Set of TakeOff and PutIn
+    let 
+      gMTakeOff = setTakeOff numTakeOff gMatrix
+      gMPutIn   = setTakeIn gMTakeOff
+
+    -- |Setting New Solution
+    let
+      gMatrix2 = resetSolution gMatrix gMPutIn
+    -- |##########################################################
+
+
+    -- |First Simple Evaluation ##################################
     t3 <- getTime Monotonic
+    let simpVal = simpleEvaluation gMatrix dMatrix
+    print ( simpVal  )
+    -- |##########################################################
 
-    -- |Cálculo do valor da função objetivo
-    print( simpleEvaluation gMatrix dMatrix  )
-    
 
+    -- |Second Simple Evaluation #################################
     t4 <- getTime Monotonic
+    let simpVal2 = simpleEvaluation gMatrix2 dMatrix
+    print ( simpVal2  )
+    -- |##########################################################
 
+
+    -- |Fast Evaluation ##########################################
+    t5 <- getTime Monotonic
+    let fastVal = fastEvaluation simpVal gMTakeOff gMPutIn dMatrix
+    print ( fastVal )
+    -- |##########################################################
+
+
+    t6 <- getTime Monotonic
     print ( t1 )
     print ( t2 )
     print ( t3 )
     print ( t4 )
-
-
-
-
+    print ( t5 )
+    print ( t6 )

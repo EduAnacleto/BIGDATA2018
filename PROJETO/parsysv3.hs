@@ -95,13 +95,16 @@ len x = len' 0 x
 parLen :: ChunksOf [a] -> Integer
 parLen chunks = mapReduce (\x -> 1) (+) chunks
 
+
 -- |'flapMap'
 flatMap :: [[a]] -> [a]
 flatMap matrix = foldl (++) [] matrix
 
+
 -- |'distinctFlatMap'
 distinctFlatMap :: [[Integer]] -> [Integer]
 distinctFlatMap  = sort . nub . flatMap
+
 
 -- |'zipWithIndexBackLen'
 -- |Está função aplica o zipWithIndex e retornando também a dimensão do vetor zipado
@@ -110,6 +113,7 @@ zipWithIndexBackLen x = zipWIBL x [1,2..] []
     where
         zipWIBL (x:[]) (y:_) h = (y, h++[(x, y)])
         zipWIBL (x:xs) (y:ys) h = zipWIBL xs ys (h++[(x, y)])
+
 
 -- |'zipWithIndex'
 zipWithIndex :: [a] -> [(Integer, a)]
@@ -141,6 +145,7 @@ parseFile file = map parseLine (lines file)
 getMaxFeatValue :: BruteInstance -> Integer
 getMaxFeatValue = foldl (max) 0 . map (\x -> foldl (max) 0 x )
 
+
 -- |'vecFeatures'
 -- |Está função retorna o zipWithIndex da consolidação das features e a quantidade de features
 parVecFeatures :: ChunksOf BruteInstance -> (Integer, [(Integer, Integer)])
@@ -164,18 +169,50 @@ parInfoFeatPerObj instChunks = mapReduce multLen foldInfo instChunks
 tratarDados :: Instance -> Dictionary -> Instance
 tratarDados dM dict = map (\(i, di) -> (i, sort $ map (\dij -> dict M.! dij) di) ) dM
 
+
 -- |'parTratarDados'
 parTratarDados :: ChunksOf Instance -> Dictionary -> ChunksOf Instance
 parTratarDados chunks dict = parmap (\x -> tratarDados x dict ) chunks
 
 
+-- |'setTakeOff'
+setTakeOff :: Int -> Solution -> Solution
+setTakeOff xLen gM = map (\(x, y) -> (take xLen x, y)) gM
+
+
+-- |'setTakeIn'
+setTakeIn :: Solution -> Solution
+setTakeIn ((x1,y1):hs) = setTakeIn' [] ((x1,y1):hs)
+    where
+        setTakeIn' h                  []  = error "Error"
+        setTakeIn' h         ((xj,yj):[]) = h ++ [(x1, yj)]
+        setTakeIn' h ((xi,yi):(xj,yj):ps) = setTakeIn' (h ++ [(xj,yi)]) ((xj,yj):ps)
+
+
+-- |'replaceObjects
+replaceObjects :: (ObjectLabels, FeatureLabels) -> (ObjectLabels, FeatureLabels) -> (ObjectLabels, FeatureLabels)
+replaceObjects (xO, xF) (yO, yF) = (sort $ replaceO' xO yO [], xF)
+    where
+        replaceO'    []     ys  d = d ++ ys
+        replaceO'    xs     []  d = d ++ xs
+        replaceO' (x:xs) (y:ys) d = replaceO' xs ys (d ++ [y])
+
+
+-- |'resetSolution
+resetSolution :: Solution -> Solution -> Solution
+resetSolution gM gMTakeIn = changeS' gM gMTakeIn []
+    where
+        changeS'    []      _  d = d
+        changeS'     _      [] d = d
+        changeS' (x:xs) (y:ys) d = changeS' xs ys (d ++ [replaceObjects x y])
+
 -- |##########################################################################################
 -- |##########################################################################################
 
 
 
 
--- |'SIMPLEEVALUATION' 
+-- |'SIMPLE EVALUATION' 
 -- ##################################################################################
 
 -- |'filterxD'
@@ -206,23 +243,26 @@ filteryd y d = filteryd' y d 0
             | otherwise           = filteryd' (y:ys)   ds   c
 
 -- |'simpleEvalPar' Avaliação básica distribuída
-simpleEvalPar :: ChunksOf Solution -> ChunksOf Instance -> SolutionValue
-simpleEvalPar gCks dCks = ( 
+parSimpleEvaluation :: ChunksOf Solution -> ChunksOf Instance -> SolutionValue
+parSimpleEvaluation gCks dCks = ( 
     mapReduce ( \(gxk, gyk) -> 
         mapReduce ( \di -> filteryd gyk di ) (+) 
         $ parFilterxD gxk dCks ) (+)
     $ gCks )
 
 
-{-
--- |'simpleEvalPar' Avaliação básica distribuída
-simpleEvalPar :: ChunksOf Solution -> Instance -> SolutionValue
-simpleEvalPar gCks dM = ( 
-    mapReduce ( \(gxk, gyk) -> 
-        mapReduce ( \di -> filteryd gyk di ) (+)
-        $ chunksOf 1000 (filterxD gxk dM) ) (+)
-    $ gCks )
--}
+-- |##################################################################################
+-- |##################################################################################
+
+
+
+
+-- |'FAST EVALUATION'
+-- ###################################################################################
+
+-- |'Fast Evaluation
+parFastEvaluation :: SolutionValue -> ChunksOf Solution -> ChunksOf Solution -> ChunksOf Instance -> SolutionValue
+parFastEvaluation sol gMTakeOff gMPutIn dMCks = sol - parSimpleEvaluation gMTakeOff dMCks + parSimpleEvaluation gMPutIn dMCks
 
 -- |##################################################################################
 -- |##################################################################################
@@ -255,54 +295,77 @@ initSolution yLen n m k = filter (/= ([],[])) $ listSol [] k
 main :: IO()
 main = do
 
-
+    -- |READING AND PARSING DATA #################################
     t1 <- getTime Monotonic
-
-    -- |Entrada dos dados
-    file <- readFile "teste2.data"
+    file <- readFile "amazon2000.data"
     let 
       dataset = parseFile file
       numCks = 1000 :: Int
       dataChunks  = chunksOf numCks dataset
+    -- |##########################################################
 
 
+    -- |PREPROCESSING ############################################
+    -- |Taking instance info
     t2 <- getTime Monotonic
-
-    -- |Pré-processamento
     let
       (m, featuresDic) = parVecFeatures dataChunks
-      dictHash         = M.fromList featuresDic
+      dictHash   = M.fromList featuresDic
       (n, sumNumFeat, minNumFeat, maxNumFeat) = parInfoFeatPerObj dataChunks
-      aveNumFeat       = (fromIntegral sumNumFeat) / (fromIntegral n) 
-      k = 10
+      aveNumFeat = (fromIntegral sumNumFeat) / (fromIntegral n) 
+      k          = 10
+      numTakeOff = 150
 
     print ( ("numObjects", "numFeatures") )
     print ( (n, m) )
     print ( ("min", "max", "average") )
     print ( (minNumFeat, maxNumFeat, aveNumFeat) )
 
-    t3 <- getTime Monotonic
-
+    -- |Setting Instance and Initial Solution
     let 
-      dMCks   =  parTratarDados (chunksOf numCks $ zipWithIndex dataset) dictHash
+      dMCks   = parTratarDados (chunksOf numCks $ zipWithIndex dataset) dictHash
       gMatrix = initSolution (truncate aveNumFeat) n m k
       gMCks   = chunksOf 1 gMatrix
 
+    -- |Setting Set of TakeOff and PutIn
+    let 
+      gMTO      = setTakeOff numTakeOff gMatrix
+      gMTakeOff = chunksOf 1 gMTO
+      gMPI      = setTakeIn gMTO
+      gMPutIn   = chunksOf 1 gMPI
 
+    -- |Setting New Solution
+    let
+      gMatrix2 = resetSolution gMatrix gMPI
+      gMCks2   = chunksOf 1 gMatrix2 
+    -- |##########################################################
+
+
+    -- |First Simple Evaluation ##################################
+    t3 <- getTime Monotonic
+    let simpVal = parSimpleEvaluation gMCks dMCks
+    print ( simpVal  )
+    -- |##########################################################
+
+
+    -- |Second Simple Evaluation #################################
     t4 <- getTime Monotonic
+    let simpVal2 = parSimpleEvaluation gMCks2 dMCks
+    print ( simpVal2  )
+    -- |##########################################################
 
-    -- |Cálculo do valor da função objetivo
-    print( simpleEvalPar gMCks dMCks  )
-    --print( simpleEvalPar gMCks (zipWithIndex dataset)  )
 
+    -- |Fast Evaluation ##########################################
     t5 <- getTime Monotonic
+    let fastVal = parFastEvaluation simpVal gMTakeOff gMPutIn dMCks
+    print ( fastVal )
+    -- |##########################################################
 
+
+    t6 <- getTime Monotonic
     print ( t1 )
     print ( t2 )
     print ( t3 )
     print ( t4 )
     print ( t5 )
-
-
-
-
+    print ( t6 )
