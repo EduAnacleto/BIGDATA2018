@@ -16,7 +16,11 @@ import Data.List -- (foldl1', nub, tails, intercalate, sortBy, groupBy, sort)
 import Data.List.Split --(chunksOf)
 import qualified Data.HashMap.Strict as M
 
-import System.Random
+import Formatting
+import Formatting.Clock
+import System.Clock
+
+
 
 -- | TYPES
 type Solution            = [([Integer], [Integer])]
@@ -101,7 +105,7 @@ zipWithIndex = zip [1,2..]
 
 
 
--- |'PREPROCESSING FUNCTIONS
+-- |'FUNCTIONS FOR PREPROCESSING
 -- |##########################################################################################
 
 -- | Leitura de arquivo
@@ -219,27 +223,45 @@ initSolution yLen n m k = filter (/= ([],[])) $ listSol [] k
 main :: IO()
 main = do
 
+    t1 <- getTime Monotonic
+
     -- |Entrada dos dados
     file <- readFile "teste2.data"
     let 
       dataset = parseFile file
 
+    t2 <- getTime Monotonic
+
     -- |Pré-processamento
     let
       (m, featuresDic) = vecFeatures dataset
-      dictHash = M.fromList featuresDic
-      (n, sumFeat, minFeat, maxFeat) = infoFeatPerObj dataset
-      aveFeat = fromIntegral (sumFeat `div` n)
+      dictHash         = M.fromList featuresDic
+      (n, sumNumFeat, minNumFeat, maxNumFeat) = infoFeatPerObj dataset
+      aveNumFeat       = (fromIntegral sumNumFeat) / (fromIntegral n)
       k = 10
 
-    print ( ( n, m ) )
-    print ( (aveFeat, minFeat, maxFeat) )
+    print ( ("numObjects", "numFeatures") )
+    print ( (n, m) )
+    print ( ("min", "max", "average") )
+    print ( (minNumFeat, maxNumFeat, aveNumFeat) )
 
     let 
       dMatrix = tratarDados (zipWithIndex dataset) dictHash
-      gMatrix = initSolution aveFeat n m k
+      gMatrix = initSolution (truncate aveNumFeat) n m k
 
+    t3 <- getTime Monotonic
 
     -- |Cálculo do valor da função objetivo
     print( simpleEvaluation gMatrix dMatrix  )
     
+
+    t4 <- getTime Monotonic
+
+    print ( t1 )
+    print ( t2 )
+    print ( t3 )
+    print ( t4 )
+
+
+
+

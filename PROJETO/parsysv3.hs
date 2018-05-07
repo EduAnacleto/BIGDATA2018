@@ -19,7 +19,10 @@ import Data.List.Split --(chunksOf)
 
 import qualified Data.HashMap.Strict as M
 
-import System.Random
+import Formatting
+import Formatting.Clock
+import System.Clock
+
 
 
 -- | TYPES
@@ -144,15 +147,17 @@ parVecFeatures :: ChunksOf BruteInstance -> (Integer, [(Integer, Integer)])
 parVecFeatures chunks = zipWithIndexBackLen 
     $ mapReduce id (\x y -> sort $ nub (x ++ y)) chunks
 
+
 -- |'indoFeatPerObj
 -- |Esta função retorna informações com relação aos de objetos e as features Exemplo: número de objetos, quantidade máxima e mínima de features por objeto e a soma de features dos objetos
 parInfoFeatPerObj :: ChunksOf BruteInstance -> (Integer, Integer, Integer, Integer)
-parInfoFeatPerObj chunks = mapReduce specialLen infoFold chunks
+parInfoFeatPerObj instChunks = mapReduce multLen foldInfo instChunks
     where
-        infoFold (x1, x2, x3, x4) (y1, y2, y3, y4) = (x1 + y1, x2+y2, min x3 y3, max x4 y4)
-        specialLen x = (1, lenthX, lenthX, lenthX)
+        foldInfo (x1, x2, x3, x4) (y1, y2, y3, y4) = (x1+y1, x2+y2, x3 `min` y3, x4 `max` y4)
+        multLen x = (1, lenthX, lenthX, lenthX)
             where
                 lenthX = len x
+
 
 -- |'tratarDados'
 -- |Esta função troca os labels das features para números no intervado {1, 2.. m} onde m é a quantidade de diferentes features
@@ -250,6 +255,9 @@ initSolution yLen n m k = filter (/= ([],[])) $ listSol [] k
 main :: IO()
 main = do
 
+
+    t1 <- getTime Monotonic
+
     -- |Entrada dos dados
     file <- readFile "teste2.data"
     let 
@@ -257,23 +265,44 @@ main = do
       numCks = 1000 :: Int
       dataChunks  = chunksOf numCks dataset
 
+
+    t2 <- getTime Monotonic
+
     -- |Pré-processamento
     let
       (m, featuresDic) = parVecFeatures dataChunks
-      dictHash = M.fromList featuresDic
-      (n, sumFeat, minFeat, maxFeat) = parInfoFeatPerObj dataChunks
-      aveFeat = fromIntegral (sumFeat `div` n)
+      dictHash         = M.fromList featuresDic
+      (n, sumNumFeat, minNumFeat, maxNumFeat) = parInfoFeatPerObj dataChunks
+      aveNumFeat       = (fromIntegral sumNumFeat) / (fromIntegral n) 
       k = 10
 
+    print ( ("numObjects", "numFeatures") )
     print ( (n, m) )
-    print ( (aveFeat, minFeat, maxFeat) )
+    print ( ("min", "max", "average") )
+    print ( (minNumFeat, maxNumFeat, aveNumFeat) )
+
+    t3 <- getTime Monotonic
 
     let 
-      dMCks =  parTratarDados (chunksOf numCks $ zipWithIndex dataset) dictHash
-      gMatrix = initSolution aveFeat n m k
-      gMCks = chunksOf 1 gMatrix
+      dMCks   =  parTratarDados (chunksOf numCks $ zipWithIndex dataset) dictHash
+      gMatrix = initSolution (truncate aveNumFeat) n m k
+      gMCks   = chunksOf 1 gMatrix
 
+
+    t4 <- getTime Monotonic
 
     -- |Cálculo do valor da função objetivo
     print( simpleEvalPar gMCks dMCks  )
     --print( simpleEvalPar gMCks (zipWithIndex dataset)  )
+
+    t5 <- getTime Monotonic
+
+    print ( t1 )
+    print ( t2 )
+    print ( t3 )
+    print ( t4 )
+    print ( t5 )
+
+
+
+
