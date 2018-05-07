@@ -162,9 +162,10 @@ filterxD x d = filterxD' x d []
     where
         filterxD' []  _ h   = h
         filterxD'  _ [] h   = h
-        filterxD' (x:xs) ((a, b):ds) h
-            | x == a        = filterxD'    xs  ds (h ++ [b])
-            | otherwise     = filterxD' (x:xs) ds  h
+        filterxD' (xi:xs) ((di, dVec):ds) h
+            | xi == di      = filterxD'     xs              ds  (h ++ [dVec])
+            | xi  < di      = filterxD'     xs  ((di, dVec):ds)  h
+            | otherwise     = filterxD' (xi:xs)             ds   h
 
 -- |'filteryd'
 filteryd :: FeatureLabels -> FilteredInstanceRow -> Integer
@@ -179,15 +180,16 @@ filteryd y d = filteryd' y d 0
 
 -- |'simpleEvaluation'
 simpleEvaluation :: Solution -> Instance -> SolutionValue
-simpleEvaluation gM dM = ( foldl1' (+)
+simpleEvaluation gM dM = ( 
+    foldl1' (+)
     $ map ( \(gxk, gyk) -> 
-      foldl1' (+) $ map ( \di -> filteryd gyk di ) 
-      $ filterxD gxk dM ) 
+        foldl1' (+) 
+        $ map ( \di -> filteryd gyk di ) 
+        $ filterxD gxk dM ) 
     $ gM )
 
 -- |##################################################################################
 -- |##################################################################################
-
 
 
 
@@ -197,7 +199,7 @@ simpleEvaluation gM dM = ( foldl1' (+)
 
 -- |'initSolution' Initial solution
 initSolution :: Int -> Integer -> Integer -> Integer -> Solution
-initSolution yLen n m k = listSol [] k
+initSolution yLen n m k = filter (/= ([],[])) $ listSol [] k
     where
         listSol s 1 = [( [ x | x <- [ 1, 2 .. (pObj+rObj) ]], take yLen [y | y <- [ 1,2 .. (pFea+rFea)]] )] ++ s
         listSol s k = listSol ( [( [ x | x <- [ (k-1)*pObj+rObj+1, (k-1)*pObj+rObj+2 .. k*pObj+rObj]], take yLen [y | y <- [(k-1)*pFea+rFea+1,(k-1)*pFea+rFea+2 .. k*pFea+rFea]] )] ++ s) (k-1)

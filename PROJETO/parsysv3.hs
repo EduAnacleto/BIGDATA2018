@@ -173,7 +173,6 @@ parTratarDados chunks dict = parmap (\x -> tratarDados x dict ) chunks
 -- |'SIMPLEEVALUATION' 
 -- ##################################################################################
 
-
 -- |'filterxD'
 -- |Filtra as linhas da matrix D com relação aos índices i da solução x cujos valores x_i = 1
 filterxD :: ObjectLabels -> Instance -> FilteredInstance
@@ -181,12 +180,13 @@ filterxD x d = filterxD' x d []
     where
         filterxD' []  _ h   = h
         filterxD'  _ [] h   = h
-        filterxD' (x:xs) ((a, b):ds) h
-            | x == a        = filterxD'    xs  ds (h ++ [b])
-            | otherwise     = filterxD' (x:xs) ds  h
+        filterxD' (xi:xs) ((di, dVec):ds) h
+            | xi == di      = filterxD'     xs              ds  (h ++ [dVec])
+            | xi  < di      = filterxD'     xs  ((di, dVec):ds)  h
+            | otherwise     = filterxD' (xi:xs)             ds   h
 
 parFilterxD :: ObjectLabels -> ChunksOf Instance -> ChunksOf FilteredInstance
-parFilterxD x dCks = parmap (\d -> filterxD x d) dCks 
+parFilterxD objL dCks = filter (/=[]) $ parmap (\dCi -> filterxD objL dCi) dCks 
 
 
 -- |'filteryd'
@@ -197,17 +197,27 @@ filteryd y d = filteryd' y d 0
         filteryd' (y:ys) []     c = filteryd'    ys    []  (c+1)
         filteryd' (y:ys) (d:ds) c
             | d == y              = filteryd'    ys    ds  (c-1)
-            | d > y               = filteryd'    ys (d:ds) (c+1)
+            | d  > y               = filteryd'    ys (d:ds) (c+1)
             | otherwise           = filteryd' (y:ys)   ds   c
 
 -- |'simpleEvalPar' Avaliação básica distribuída
 simpleEvalPar :: ChunksOf Solution -> ChunksOf Instance -> SolutionValue
-simpleEvalPar gM dCks = ( mapReduce ( \(gxk, gyk) -> 
-      mapReduce ( \di -> filteryd gyk di ) (+) 
-      $ filter (/=[]) 
-      $ parFilterxD gxk dCks ) (+)
-    $ gM )
+simpleEvalPar gCks dCks = ( 
+    mapReduce ( \(gxk, gyk) -> 
+        mapReduce ( \di -> filteryd gyk di ) (+) 
+        $ parFilterxD gxk dCks ) (+)
+    $ gCks )
 
+
+{-
+-- |'simpleEvalPar' Avaliação básica distribuída
+simpleEvalPar :: ChunksOf Solution -> Instance -> SolutionValue
+simpleEvalPar gCks dM = ( 
+    mapReduce ( \(gxk, gyk) -> 
+        mapReduce ( \di -> filteryd gyk di ) (+)
+        $ chunksOf 1000 (filterxD gxk dM) ) (+)
+    $ gCks )
+-}
 
 -- |##################################################################################
 -- |##################################################################################
@@ -220,8 +230,7 @@ simpleEvalPar gM dCks = ( mapReduce ( \(gxk, gyk) ->
 
 -- |'initSolution' Initial solution
 initSolution :: Int -> Integer -> Integer -> Integer -> Solution
---[([Integer], [Integer])]
-initSolution yLen n m k = listSol [] k
+initSolution yLen n m k = filter (/= ([],[])) $ listSol [] k
     where
         listSol s 1 = [( [ x | x <- [ 1, 2 .. (pObj+rObj) ]], take yLen [y | y <- [ 1,2 .. (pFea+rFea)]] )] ++ s
         listSol s k = listSol ( [( [ x | x <- [ (k-1)*pObj+rObj+1, (k-1)*pObj+rObj+2 .. k*pObj+rObj]], take yLen [y | y <- [(k-1)*pFea+rFea+1,(k-1)*pFea+rFea+2 .. k*pFea+rFea]] )] ++ s) (k-1)
@@ -262,8 +271,9 @@ main = do
     let 
       dMCks =  parTratarDados (chunksOf numCks $ zipWithIndex dataset) dictHash
       gMatrix = initSolution aveFeat n m k
-      gMCks = chunksOf 2 gMatrix
+      gMCks = chunksOf 1 gMatrix
+
 
     -- |Cálculo do valor da função objetivo
     print( simpleEvalPar gMCks dMCks  )
-    --print( simpleEvalPar gMatrix dMCks  )
+    --print( simpleEvalPar gMCks (zipWithIndex dataset)  )
