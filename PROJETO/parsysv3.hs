@@ -297,7 +297,7 @@ main = do
 
     -- |READING AND PARSING DATA #################################
     t1 <- getTime Monotonic
-    file <- readFile "amazon2000.data"
+    file <- readFile "amazon10000.data"
     let 
       dataset = parseFile file
       numCks = 1000 :: Int

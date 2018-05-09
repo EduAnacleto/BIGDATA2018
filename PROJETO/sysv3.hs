@@ -137,11 +137,10 @@ vecFeatures x = (zipWithIndexBackLen
 -- |'indoFeatPerObj
 -- |Esta função retorna informações com relação aos de objetos e as features Exemplo: número de objetos, quantidade máxima e mínima de features por objeto e a soma de features dos objetos
 infoFeatPerObj :: BruteInstance -> (Integer, Integer, Integer, Integer)
-infoFeatPerObj dM = foldl1' infoFold $ map specialLen  dM
---infoFeatPerObj dM = foldl1' (\(x1, x2, x3, x4) (y1, y2, y3, y4) -> (x1 + y1, x2+y2, min x3 y3, max x4 y4)) $ map specialLen  dM
+infoFeatPerObj dM = foldl1' foldIndo $ map multLen  dM
     where
-        infoFold (x1, x2, x3, x4) (y1, y2, y3, y4) = (x1 + y1, x2+y2, min x3 y3, max x4 y4)
-        specialLen x = (1, lenthX, lenthX, lenthX)
+        foldInfo (x1, x2, x3, x4) (y1, y2, y3, y4) = (x1 + y1, x2+y2, x3 `min` y3, x4 `max` y4)
+        multLen x = (1, lenthX, lenthX, lenthX)
             where
                 lenthX = len x
 
@@ -268,7 +267,7 @@ main = do
 
     -- |READING AND PARSING DATA #################################
     t1 <- getTime Monotonic
-    file <- readFile "amazon2000.data"
+    file <- readFile "amazon20000.data"
     let 
       dataset = parseFile file
     -- |##########################################################
