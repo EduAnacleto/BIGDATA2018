@@ -262,7 +262,7 @@ parSimpleEvaluation gCks dCks = (
 
 -- |'Fast Evaluation
 parFastEvaluation :: SolutionValue -> ChunksOf Solution -> ChunksOf Solution -> ChunksOf Instance -> SolutionValue
-parFastEvaluation sol gMTakeOff gMPutIn dMCks = sol - parSimpleEvaluation gMTakeOff dMCks + parSimpleEvaluation gMPutIn dMCks
+parFastEvaluation sol gMTakeOff gMPutIn dCks = sol - parSimpleEvaluation gMTakeOff dCks + parSimpleEvaluation gMPutIn dCks
 
 -- |##################################################################################
 -- |##################################################################################
